@@ -1,0 +1,14 @@
+{
+  "name": "kiara.js",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "node app"
+  },
+  "dependencies": {
+    "express": "3.0.5",
+    "node-xml": ">= 1.0.0",
+    "jayson": "git+https://github.com/dmrub/jayson.git",
+    "xmlrpc": ">=1.1.0"
+  }
+}

@@ -1,0 +1,16 @@
+*.pyc
+*~
+*.o
+.sconsign.dblite
+*.so
+*.bak
+*.os
+*.a
+builder
+
+# Windows generated files
+kiara_gen.*
+Debug/*
+vc90.*
+src/third_party/curl-7.28.0
+node_modules

@@ -1,0 +1,8 @@
+namespace * calc
+
+// service Dummy { }
+
+service calc {
+    i32 add(i32 a, i32 b)
+    float addf(float a, float b)
+}
