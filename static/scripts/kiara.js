@@ -28,8 +28,11 @@
         };
     }
 
-    // Node.js compatibility layer
     var isNode = (typeof process === 'object' && typeof require === 'function');
+    var isWeb = typeof window === 'object';
+    var isWorker = typeof importScripts === 'function';
+
+    // Node.js compatibility layer
     if (isNode) {
         var util = require('util');
     } else {
@@ -44,6 +47,16 @@
 
     var KIARA = {};
     KIARA.inherits = util.inherits;
+
+    // Utilities
+
+    function isNumber(value) {
+        return toString.call(value) == '[object Number]';
+    }
+    function isString(value) {
+        return toString.call(value) == '[object String]';
+    }
+
 
     // Data loading
 
@@ -204,97 +217,7 @@
     errorMsg[KIARA.INVALID_OPERATION] = 'Invalid operation';
     errorMsg[KIARA.INVALID_ARGUMENT] = 'Invalid argument';
 
-    KIARA.init = function() { };
-    KIARA.finalize = function() { };
-
-    // Represents a data type.
-    KIARA.Type = function(kind, typeDefinition) {
-        this.kind = kind;
-
-        if (this.kind == "base")
-            this.baseTypeName = typeDefinition;
-
-        if (this.kind == "struct")
-            this.fields = typeDefinition;
-
-        if (this.kind == "enum")
-            this.values = typeDefinition;
-
-        if (this.kind == "array")
-            this.elementType = typeDefinition;
-    }
-
-    var types = {};
-    types.void = {
-        name : 'void'
-    };
-    types.any = {
-        name : 'any'
-    };
-    types.i8 = {
-        name : 'i8',
-        size : 1
-    };
-    types.u8 = {
-        name : 'u8',
-        size : 1
-    };
-    types.i16 = {
-        name : 'i16',
-        size : 2
-    };
-    types.u16 = {
-        name : 'u16',
-        size : 2
-    };
-    types.i32 = {
-        name : 'i32',
-        size : 4
-    };
-    types.u32 = {
-        name : 'u32',
-        size : 4
-    };
-    types.i64 = {
-        name : 'i64',
-        size : 8
-    };
-    types.u64 = {
-        name : 'u64',
-        size : 8
-    };
-    types.float = {
-        name : 'float',
-        size : 4
-    };
-    types.double = {
-        name : 'u64',
-        size : 8
-    };
-    types.boolean = {
-        name : 'boolean',
-        size : 1
-    };
-    types.string = {
-        name : 'string'
-    };
-
-    KIARA.type_void = function(ctx) { return types.void; }
-    KIARA.type_any = function(ctx) { return types.any; }
-    KIARA.type_i8 = function(ctx) { return types.i8; }
-    KIARA.type_u8 = function(ctx) { return types.u8; }
-    KIARA.type_i16 = function(ctx) { return types.i16; }
-    KIARA.type_u16 = function(ctx) { return types.u16; }
-    KIARA.type_i32 = function(ctx) { return types.i32; }
-    KIARA.type_u32 = function(ctx) { return types.u32; }
-    KIARA.type_i64 = function(ctx) { return types.i64; }
-    KIARA.type_u64 = function(ctx) { return types.u64; }
-    KIARA.type_float = function(ctx) { return types.float; }
-    KIARA.type_double = function(ctx) { return types.double; }
-    KIARA.type_boolean = function (ctx) { return types.boolean; }
-    KIARA.type_string = function (ctx) { return types.string; }
-
-    // -- KIARAError --
+    // -- KIARA.Error / KIARAError --
 
     function KIARAError(errorCode, message) {
         if (Error.captureStackTrace) // V8
@@ -309,6 +232,505 @@
     KIARAError.prototype = new Error();
     KIARAError.prototype.constructor = KIARAError;
     KIARA.Error = KIARAError;
+
+    // Hashing
+
+    // From boost::hash_combine
+    function combineHashValue(seed, hashValue) {
+        seed ^= hashValue + 0x9e3779b9 + ((seed << 6) >>> 0) + (seed >>> 2);
+        return seed >>> 0;
+    }
+
+    function hashValue(v) {
+        if (v === null || v === undefined)
+            return 0;
+        if (v.hash)
+            return v.hash();
+        else if (v instanceof Array) {
+            seed = 0;
+            for (var i = 0; i < v.length; ++i) {
+                seed = hashCombine(seed, v[i]);
+            }
+            return seed;
+        } else if (v.charCodeAt) { // String
+            seed = 0;
+            for (var i = 0; i < v.length; ++i) {
+                seed = combineHashValue(seed, v.charCodeAt(i));
+            }
+            return seed;
+        } else if (v === true) {
+            return 1;
+        } else if (v === false) {
+            return 0;
+        } else if (isNumber(v)) {
+            if (v === 0) {
+                return 0;
+            } else if (v === Number.POSITIVE_INFINITY) {
+                return -1>>>0;
+            } else if (v === Number.NEGATIVE_INFINITY) {
+                return -2>>>0;
+            } else if (v != v) {
+                // not a number
+                return -3>>>0;
+            } else if (v > 0 && (v>>>0) === v) { // check for 32-bit positive integer
+                return v;
+            } else if (v < 0 && (v|0) === v) { // check for 32-bit negative integer
+                return v>>>0; // convert to unsigned int
+            }
+            // TODO compute hash from float
+            // look in boost/functional/hash/detail/hash_float_generic.hpp
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "Cannot compute hash from: "+v);
+        }
+
+        throw new KIARAError(KIARA.INVALID_ARGUMENT, "Cannot compute hash from: "+toString.call(v));
+    }
+
+    function hashCombine(seed, v) {
+        return combineHashValue(seed, hashValue(v));
+    }
+
+
+    // Enums
+
+    var NodeKind = {};
+
+    NodeKind.FIRST_NODE_KIND = 0;
+    NodeKind.LAST_NODE_KIND = NodeKind.FIRST_NODE_KIND;
+    function nextNodeKind(i) {
+        if (i !== undefined) {
+            NodeKind.LAST_NODE_KIND = i;
+            return i;
+        }
+        return ++NodeKind.LAST_NODE_KIND;
+    }
+
+    NodeKind.FIRST_PRIMTYPE_NODE = nextNodeKind(NodeKind.FIRST_NODE_KIND);
+    NodeKind.NODE_PRIMTYPE_i8 = nextNodeKind(NodeKind.FIRST_PRIMTYPE_NODE);
+    NodeKind.NODE_PRIMTYPE_u8 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_i16 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_u16 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_i32 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_u32 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_i64 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_u64 = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_float = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_double = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_boolean = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_string = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_int8_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_uint8_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_int16_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_uint16_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_int32_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_uint32_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_int64_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_uint64_t = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_float = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_double = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_c_longdouble = nextNodeKind();
+    NodeKind.LAST_PRIMTYPE_NODE = nextNodeKind(NodeKind.NODE_PRIMTYPE_c_longdouble);
+    NodeKind.FIRST_C_PRIMTYPE_NODE = nextNodeKind(NodeKind.NODE_PRIMTYPE_c_int8_t);
+    NodeKind.NUM_PRIMTYPES = nextNodeKind(NodeKind.LAST_PRIMTYPE_NODE - NodeKind.FIRST_PRIMTYPE_NODE);
+    NodeKind.NODE_VOIDTYPE = nextNodeKind(NodeKind.LAST_PRIMTYPE_NODE + 1);
+    NodeKind.NODE_PRIMVALUETYPE = nextNodeKind();
+    NodeKind.NODE_UNRESOLVEDSYMBOLTYPE = nextNodeKind();
+    NodeKind.NODE_SYMBOLTYPE = nextNodeKind();
+    NodeKind.NODE_ANYTYPE = nextNodeKind();
+    NodeKind.NODE_TYPETYPE = nextNodeKind();
+    NodeKind.NODE_PTRTYPE = nextNodeKind();
+    NodeKind.NODE_REFTYPE = nextNodeKind();
+    NodeKind.NODE_ARRAYTYPE = nextNodeKind();
+    NodeKind.NODE_FIXEDARRAYTYPE = nextNodeKind();
+    NodeKind.NODE_STRUCTTYPE = nextNodeKind();
+    NodeKind.NODE_FUNCTYPE = nextNodeKind();
+    NodeKind.NODE_SERVICETYPE = nextNodeKind();
+
+    var PrimTypeKind = {
+        PRIMTYPE_i8     : NodeKind.NODE_PRIMTYPE_i8,
+        PRIMTYPE_u8     : NodeKind.NODE_PRIMTYPE_u8,
+        PRIMTYPE_i16    : NodeKind.NODE_PRIMTYPE_i16,
+        PRIMTYPE_u16    : NodeKind.NODE_PRIMTYPE_u16,
+        PRIMTYPE_i32    : NodeKind.NODE_PRIMTYPE_i32,
+        PRIMTYPE_u32    : NodeKind.NODE_PRIMTYPE_u32,
+        PRIMTYPE_i64    : NodeKind.NODE_PRIMTYPE_i64,
+        PRIMTYPE_u64    : NodeKind.NODE_PRIMTYPE_u64,
+        PRIMTYPE_float      : NodeKind.NODE_PRIMTYPE_float,
+        PRIMTYPE_double     : NodeKind.NODE_PRIMTYPE_double,
+        PRIMTYPE_boolean    : NodeKind.NODE_PRIMTYPE_boolean,
+        PRIMTYPE_string     : NodeKind.NODE_PRIMTYPE_string,
+        PRIMTYPE_c_int8_t   : NodeKind.NODE_PRIMTYPE_c_int8_t,
+        PRIMTYPE_c_uint8_t  : NodeKind.NODE_PRIMTYPE_c_uint8_t,
+        PRIMTYPE_c_int16_t  : NodeKind.NODE_PRIMTYPE_c_int16_t,
+        PRIMTYPE_c_uint16_t : NodeKind.NODE_PRIMTYPE_c_uint16_t,
+        PRIMTYPE_c_int32_t  : NodeKind.NODE_PRIMTYPE_c_int32_t,
+        PRIMTYPE_c_uint32_t : NodeKind.NODE_PRIMTYPE_c_uint32_t,
+        PRIMTYPE_c_int64_t  : NodeKind.NODE_PRIMTYPE_c_int64_t,
+        PRIMTYPE_c_uint64_t : NodeKind.NODE_PRIMTYPE_c_uint64_t,
+        PRIMTYPE_c_float    : NodeKind.NODE_PRIMTYPE_c_float,
+        PRIMTYPE_c_double   : NodeKind.NODE_PRIMTYPE_c_double,
+        PRIMTYPE_c_longdouble : NodeKind.NODE_PRIMTYPE_c_longdouble,
+        FIRST_C_PRIMTYPE    : NodeKind.FIRST_C_PRIMTYPE_NODE
+    };
+
+    // -- KIARA.Object --
+
+    var nextGlobalID = 0;
+    function generateID() {
+        return nextGlobalID++;
+    }
+
+    function KIARAObject(className, world) {
+        this._id = generateID();
+        this._className = className;
+        this._world = world;
+    }
+    KIARAObject.prototype.getClassName = function() {
+        return this._className;
+    }
+    KIARAObject.prototype.getWorld = function() {
+        return this._world;
+    }
+    KIARAObject.prototype.hash = function() {
+        return this._id;
+    }
+    KIARAObject.prototype.toString = function() {
+        return "["+this._className+" "+this._id+"]";
+    }
+    KIARAObject.prototype.dump = function() {
+        console.log(this.toString());
+    }
+    KIARAObject.prototype.equals = function(other) {
+        return this === other;
+    }
+
+    KIARA.Object = KIARAObject;
+
+    // -- KIARA.Namespace --
+
+    function Namespace(world, name) {
+        KIARAObject.call(this, "KIARA.Namespace", world);
+        this.name = name;
+        this.parent = null;
+        this.typeMap = {};
+        this.subnamespaces = [];
+    }
+    util.inherits(Namespace, KIARAObject);
+
+    Namespace.prototype.getName = function() {
+        return this.name;
+    }
+
+    Namespace.prototype.getFullName = function() {
+        var fullName = "", names = [];
+        var ns = this.parent;
+        while (ns)
+        {
+            names.push(ns.getName());
+            ns = ns.getParent();
+        }
+        for (var i = names.length; i--; ) {
+            fullName += names[i];
+            fullName += '.';
+        }
+        fullName += this.getName();
+        return fullName;
+    }
+
+    Namespace.prototype.getParent = function() { return this._parent; }
+    Namespace.prototype.setParent = function(parent) {
+        this.parent = parent;
+    }
+    Namespace.prototype.bindType = function(name, type, takeOwnership) {
+        if (!type)
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "type can't be null or undefined");
+        if (type.getWorld() != this.getWorld())
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "type's world must be the same as namespace world");
+        if (this.typeMap.hasOwnProperty(name))
+            throw new KIARAError(KIARA.INVALID_ARGUMENT,"Type '"+name+"' already defined.");
+
+        this.typeMap[name] = type;
+        if (takeOwnership) {
+            type.setNamespace(this);
+        }
+    }
+    Namespace.prototype.lookupType = function(name) {
+       return this.typeMap[name];
+    }
+    Namespace.prototype.getTypeName = function(type) {
+        for (var typeName in this.typeMap) {
+            if (this.typeMap[typeName] === type)
+                return typeName;
+        }
+        return "";
+    }
+    Namespace.prototype.toString = function() {
+        return "Namespace("+this.name+")";
+    }
+    Namespace.prototype.getTypeMap = function() {
+        return this.typeMap;
+    }
+    KIARA.Namespace = Namespace;
+
+
+    // -- KIARA.Type --
+
+    function Type(world, name, kind, numOrElems) {
+        KIARAObject.call(this, "KIARA.Type", world);
+        this.name = name;
+        this.kind = kind;
+        this.namespace = null;
+        if (numOrElems instanceof Array)
+            this.elements = numOrElems.slice(0);
+        else if (numOrElems)
+            this.elements = new Array(numOrElems);
+        else
+            this.elements = [];
+    }
+    util.inherits(Type, KIARAObject);
+
+    Type.prototype.getNamespace = function() { return this.namespace; }
+    Type.prototype.setNamespace = function(newNamespace) { this.namespace = newNamespace; }
+
+    Type.prototype.getTypeName = function() { return this.name; }
+
+    Type.prototype.getFullTypeName = function() {
+        if (this.namespace)
+            return this.namespace.getFullName() + "." + this.getTypeName();
+        else
+            return this.getTypeName();
+    }
+
+    Type.prototype.getKind = function() { return this.kind; }
+
+    Type.prototype.getElements = function() { return this.elements; }
+
+    Type.prototype.getNumElements = function() { return this.elements.length; }
+
+    Type.prototype.equals = function(other) {
+        if (!other || !Type.prototype.isPrototypeOf(other))
+            return false;
+        if (this.getKind() !== other.getKind())
+            return false;
+        if (this.elements.length != other.elements.length)
+            return false;
+        for (var i = 0; i < this.elements.length; ++i)
+        {
+            if (this.elements[i] === other.elements[i])
+                continue;
+
+            if (this.elements[i] && this.elements[i].equals(other.elements[i]))
+                continue;
+
+            return false;
+        }
+        return true;
+    }
+
+    Type.prototype.hash = function() {
+        var seed = 0;
+        seed = hashCombine(seed, this.getKind());
+        seed = hashCombine(seed, this.elements);
+        return seed;
+    }
+
+    Type.prototype.toString = function() {
+        return this.getFullTypeName();
+    }
+
+    Type.prototype.resizeElements = function(newSize) {
+        this.elements.length = newSize;
+    }
+
+    KIARA.Type = Type;
+
+    // -- PrimType --
+
+    var NameOfPrimTypeKind = {};
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i8] = "i8";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u8] = "u8";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i16] = "i16";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u16] = "u16";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i32] = "i32";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u32] = "u32";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i64] = "i64";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u64] = "u64";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_float] = "float";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_double] = "double";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_boolean] = "boolean";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_string] = "string";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int8_t] = "c_int8_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint8_t] = "c_uint8_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int16_t] = "c_int16_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint16_t] = "c_uint16_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int32_t] = "c_int32_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint32_t] = "c_uint32_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int64_t] = "c_int64_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint64_t] = "c_uint64_t";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_float] = "c_float";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_double] = "c_double";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_longdouble] = "c_longdouble";
+
+    var ByteSizeOfPrimTypeKind = {};
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i8] = 1;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u8] = 1;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i16] = 2;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u16] = 2;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i32] = 4;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u32] = 4;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i64] = 8;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_u64] = 8;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_float] = 4;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_double] = 8;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_boolean] = 1; //???
+    //ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_string] = ???
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int8_t] = 1;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint8_t] = 1;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int16_t] = 2;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint16_t] = 2;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int32_t] = 4;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint32_t] = 4;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_int64_t] = 8;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_uint64_t] = 8;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_float] = 4;
+    ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_double] = 8;
+    //ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_longdouble] = ???
+
+    function PrimType(world, kind) {
+        Type.call(this, world, NameOfPrimTypeKind[kind], kind, 0);
+        this._className = "KIARA.PrimType";
+    }
+    util.inherits(PrimType, Type)
+
+    PrimType.getNameOfPrimTypeKind = function(kind) {
+        return NameOfPrimTypeKind[kind];
+    }
+
+    PrimType.getByteSizeOfPrimTypeKind = function(kind) {
+        return ByteSizeOfPrimTypeKind[kind];
+    }
+
+    PrimType.isIntegerPrimTypeKind = function(kind) {
+        return (kind === PrimTypeKind.PRIMTYPE_i8 ||
+            kind === PrimTypeKind.PRIMTYPE_u8 ||
+            kind === PrimTypeKind.PRIMTYPE_i16 ||
+            kind === PrimTypeKind.PRIMTYPE_u16 ||
+            kind === PrimTypeKind.PRIMTYPE_i32 ||
+            kind === PrimTypeKind.PRIMTYPE_u32 ||
+            kind === PrimTypeKind.PRIMTYPE_i64 ||
+            kind === PrimTypeKind.PRIMTYPE_u64 ||
+            kind === PrimTypeKind.PRIMTYPE_c_int8_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_uint8_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_int16_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_uint16_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_int32_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_uint32_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_int64_t ||
+            kind === PrimTypeKind.PRIMTYPE_c_uint64_t);
+    }
+
+    PrimType.isFloatingPointPrimTypeKind = function(kind) {
+        return (kind === PrimTypeKind.PRIMTYPE_float ||
+                kind === PrimTypeKind.PRIMTYPE_double ||
+                kind === PrimTypeKind.PRIMTYPE_c_float ||
+                kind === PrimTypeKind.PRIMTYPE_c_double ||
+                kind === PrimTypeKind.PRIMTYPE_c_longdouble);
+    }
+
+    PrimType.prototype.getPrimTypeKind = function() { return this.getKind(); }
+
+    PrimType.prototype.getByteSize = function() { return PrimType.getByteSizeOfPrimTypeKind(this.getPrimTypeKind()); }
+
+    PrimType.prototype.isInteger = function() {
+        return PrimType.isIntegerPrimTypeKind(this.getPrimTypeKind());
+    }
+
+    PrimType.prototype.isFloatingPoint = function() {
+        return PrimType.isFloatingPointPrimTypeKind(getPrimTypeKind());
+    }
+
+    PrimType.prototype.isCType = function() {
+        return this.getPrimTypeKind() >= PrimTypeKind.FIRST_C_PRIMTYPE;
+    }
+
+    PrimType.getBooleanType = function(world) {
+        world.get
+    }
+
+    PrimType.getStringType = function(world) {
+    }
+    KIARA.PrimType = PrimType
+
+    // -- World --
+
+    function World() {
+        this.objects = {};
+        this.namespace = new Namespace(this, "kiara");
+
+        this.i8 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_i8));
+        this.u8 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_u8));
+        this.i16 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_i16));
+        this.u16 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_u16));
+        this.i32 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_i32));
+        this.u32 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_u32));
+        this.i64 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_i64));
+        this.u64 = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_u64));
+        this.float = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_float));
+        this.double = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_double));
+        this.boolean = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_boolean));
+        this.string = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_string));
+
+        this.c_int8_t   = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_int8_t));
+        this.c_uint8_t  = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_uint8_t));
+        this.c_int16_t  = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_int16_t));
+        this.c_uint16_t = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_uint16_t));
+        this.c_int32_t  = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_int32_t));
+        this.c_uint32_t = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_uint32_t));
+        this.c_int64_t  = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_int64_t));
+        this.c_uint64_t = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_uint64_t));
+        this.c_float    = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_float));
+        this.c_double   = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_double));
+        this.c_longdouble = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_longdouble));
+    }
+
+    var worldTypes = [
+        "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "float", "double", "boolean", "string",
+        "c_int8_t", "c_int8_t", "c_uint8_t", "c_int16_t", "c_uint16_t", "c_int32_t", "c_uint32_t",
+        "c_int64_t", "c_uint64_t", "c_char", "c_wchar_t", "c_schar", "c_uchar", "c_short",
+        "c_ushort", "c_int", "c_uint", "c_long", "c_ulong", "c_longlong", "c_ulonglong",
+        "c_size_t", "c_ssize_t", "c_float", "c_double", "c_longdouble"];
+
+    for (var i = 0; i < worldTypes.length; ++i) {
+        var tn = worldTypes[i];
+        World.prototype["type_"+tn] = new Function("return this."+tn+";");
+    }
+
+    World.prototype.findObject = function(object) {
+        var hash = hashValue(object);
+        if (this.objects.hasOwnProperty(hash)) {
+            var values = this.objects[hash];
+            for (var i = 0; i < values.length; ++i) {
+                if (values[i] === object ||
+                    (values[i] && values[i].equals && (values[i].equals(object))))
+                    return values[i];
+            }
+            // handle hash collision
+            values.push(object);
+            return object;
+        }
+        this.objects[hash] = [object];
+        return object;
+    }
+    World.prototype.find = World.prototype.findObject
+
+    var globalWorld = new World();
+    KIARA.World = function() { // singleton
+        return globalWorld;
+    }
+
+    // -- Initialization --
+
+    KIARA.init = function() { }
+    KIARA.finalize = function() { }
 
     // -- Listener Support --
 
