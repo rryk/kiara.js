@@ -65,6 +65,15 @@
     function isArray(value) {
         return toString.call(value) === '[object Array]';
     }
+    function isObject(value) {
+        return toString.call(value) === '[object Object]';
+    }
+    KIARA.isNumber = isNumber;
+    KIARA.isString = isString;
+    KIARA.isBoolean = isBoolean;
+    KIARA.isFunction = isFunction;
+    KIARA.isArray = isArray;
+    KIARA.isObject = isObject;
 
     // Data loading
 
@@ -356,6 +365,7 @@
     NodeKind.NODE_STRUCTTYPE = nextNodeKind();
     NodeKind.NODE_FUNCTYPE = nextNodeKind();
     NodeKind.NODE_SERVICETYPE = nextNodeKind();
+    NodeKind.NODE_VARIANTTYPE = nextNodeKind();
 
     var PrimTypeKind = {
         PRIMTYPE_i8     : NodeKind.NODE_PRIMTYPE_i8,
@@ -395,6 +405,7 @@
     }
 
     function KIARAObject(world) {
+        checkWorld(world);
         this._id = generateID();
         this._world = world;
     }
@@ -590,7 +601,7 @@
     NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_longdouble] = "c_longdouble";
     NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_js_number] = "js_number";
     NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_js_string] = "js_string";
-    NameOfPrimTypeKind[PrimTypeKind.NODE_PRIMTYPE_js_boolean] = "js_boolean";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_js_boolean] = "js_boolean";
 
     var ByteSizeOfPrimTypeKind = {};
     ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i8] = 1;
@@ -737,6 +748,11 @@
     World.prototype.builtinTypeNames = worldBuiltinTypes;
     World.prototype.typeNames = worldTypes;
 
+    function checkWorld(world) {
+        if (!world || !(world instanceof World))
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "No KIARA world passed, use KIARA.World()");
+    }
+
     World.prototype.getWorldNamespace = function() {
         return this.namespace;
     }
@@ -795,6 +811,7 @@
     PrimValueType.prototype._className = "KIARA.PrimValueType";
 
     PrimValueType.get = function(world, value) {
+        checkWorld(world);
         return world.find(new PrimValueType(world, value));
     }
 
@@ -828,6 +845,7 @@
     VoidType.prototype._className = "KIARA.VoidType";
 
     VoidType.get = function(world) {
+        checkWorld(world);
         var void_ = world["void"];
         if (!void_)
             void_ = world["void"] = world.find(new VoidType(world));
@@ -845,6 +863,7 @@
     TypeType.prototype._className = "KIARA.TypeType";
 
     TypeType.get = function(world) {
+        checkWorld(world);
         var type = world.type;
         if (!type)
             type = world.type = world.find(new TypeType(world));
@@ -862,6 +881,7 @@
     UnresolvedSymbolType.prototype._className = "KIARA.UnresolvedSymbolType";
 
     UnresolvedSymbolType.get = function(world) {
+        checkWorld(world);
         var unresolved_symbol = world.unresolved_symbol;
         if (!unresolved_symbol)
             unresolved_symbol = world.unresolved_symbol = world.find(new UnresolvedSymbolType(world));
@@ -879,6 +899,7 @@
     AnyType.prototype._className = "KIARA.AnyType";
 
     AnyType.get = function(world) {
+        checkWorld(world);
         var any = world.any;
         if (!any)
             any = world.any = world.find(new AnyType(world));
@@ -908,6 +929,11 @@
 
     StructType.create = function(world, name, elemsOrNum) {
         return world.find(new StructType(world, name, NodeKind.NODE_STRUCTTYPE, elemsOrNum, {unique:true}));
+    }
+    StructType.get = function(world, name, elements, names) {
+        var ty = new StructType(world, name, NodeKind.NODE_STRUCTTYPE, elements, {unique:false});
+        ty.setElementNames(names);
+        return world.find(ty);
     }
 
     StructType.prototype.isUnique = function() { return this.unique; }
@@ -954,6 +980,8 @@
     }
 
     StructType.prototype.setElementNames = function(names) {
+        if (this.getNumElements() === 0 && (names === undefined || names === null))
+            return;
         if (this.getNumElements() !== names.length)
             throw new KIARAError(KIARA.INVALID_ARGUMENT, "Number of names is not equal to number of elements");
         this.elementDataList.length = names.length;
@@ -1007,7 +1035,10 @@
         console.log(this.toStringInner());
     }
     StructType.prototype.toString = function() {
-        var s = "struct "+this.getTypeName();
+        var s = "struct";
+        var tn = this.getTypeName();
+        if (tn)
+            s += " "+tn;
         if (!this.isOpaque())
             s += " ";
         s += this.toStringInner();
@@ -1030,6 +1061,29 @@
 
     KIARA.StructType = StructType;
 
+    // -- VariantType --
+
+    function VariantType(world, elementTypes) {
+        StructType.call(this, world, "variant", NodeKind.NODE_VARIANTTYPE, elementTypes.length, {unique: false});
+        this.setElements(elementTypes);
+    }
+    util.inherits(VariantType, StructType);
+    VariantType.prototype._className = "KIARA.VariantType";
+
+    VariantType.get = function(world, elementTypes) {
+        return world.find(new VariantType(world, elementTypes));
+    }
+
+    VariantType.prototype.getElementTypes = function() {
+        return this.getElements();
+    }
+
+    VariantType.prototype.toString = function() {
+        return "variant "+this.toStringInner();
+    }
+
+    KIARA.VariantType = VariantType;
+
     // -- ArrayType --
 
     function ArrayType(world, elementType) {
@@ -1037,7 +1091,7 @@
         if (!elementType)
             throw new KIARAError(KIARA.INVALID_ARGUMENT, "elementType cannot be null");
         this._setElementAt(0, elementType); // internal set element
-        this.setElementNameAt(0, "Element");
+        //this.setElementNameAt(0, "Element");
     }
     util.inherits(ArrayType, StructType);
     ArrayType.prototype._className = "KIARA.ArrayType";
