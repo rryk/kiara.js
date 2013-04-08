@@ -889,32 +889,25 @@
 
     // -- StructType --
 
-    function StructType(world, name, elemsOrNum, names) {
-        Type.call(this, world, name, NodeKind.NODE_STRUCTTYPE, elemsOrNum);
-        if (elemsOrNum === undefined || elemsOrNum === null || isNumber(elemsOrNum)) {
-            this.unique = true;
-        } else if (isArray(elemsOrNum)) {
-            this.unique = false;
-        } else {
-            throw new KIARAError(KIARA.INVALID_ARGUMENT,
-                "Array of elements, null or undefined must be passed as 3-rd argument");
-        }
+    function StructType(world, name, kind, elemsOrNum, options) {
+        Type.call(this, world, name, kind, elemsOrNum);
+        options = options || {};
+        this.unique = !!options.unique;
+        var names = options.names;
+
         this.elementDataList = new Array(this.getNumElements());
         if (isArray(names)) {
             if (names.length !== this.getNumElements())
                 throw new KIARAError(KIARA.INVALID_ARGUMENT, "Number of elements ("+this.getNumElements()
                     +") is not equal to the number of names ("+names.length+")");
             this.setElementNames(names);
-        } else {
-            if (!this.unique && this.getNumElements() > 0)
-                throw new KIARAError(KIARA.INVALID_ARGUMENT, "No element names passed");
         }
     }
     util.inherits(StructType, Type);
     StructType.prototype._className = "KIARA.StructType";
 
     StructType.create = function(world, name, elemsOrNum) {
-        return world.find(new StructType(world, name, elemsOrNum));
+        return world.find(new StructType(world, name, NodeKind.NODE_STRUCTTYPE, elemsOrNum, {unique:true}));
     }
 
     StructType.prototype.isUnique = function() { return this.unique; }
@@ -948,6 +941,12 @@
         this.elements[index] = element;
     }
 
+    StructType.prototype._setElementAt = function(index, element) {
+        if (index < 0 || index >= this.getNumElements())
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "Index out of bounds");
+        this.elements[index] = element;
+    }
+
     StructType.prototype.getElementDataAt = function(index) {
         if (index < 0 || index >= this.getNumElements())
             throw new KIARAError(KIARA.INVALID_ARGUMENT, "Index out of bounds");
@@ -959,10 +958,7 @@
             throw new KIARAError(KIARA.INVALID_ARGUMENT, "Number of names is not equal to number of elements");
         this.elementDataList.length = names.length;
         for (var i = 0; i < names.length; ++i) {
-            if (!this.elementDataList[i])
-                this.elementDataList[i] = {name : names[i]};
-            else
-                this.elementDataList[i].name = names[i];
+            this.setElementAt(i, names[i]);
         }
     }
 
@@ -975,11 +971,14 @@
     }
 
     StructType.prototype.getElementNameAt = function(index) {
-        return this.elementDataList[index].name;
+        return this.elementDataList[index].name || "";
     }
 
     StructType.prototype.setElementNameAt = function(index, name) {
-        this.elementDataList[index].name = name;
+        if (!this.elementDataList[index])
+            this.elementDataList[index] = {name : name};
+        else
+            this.elementDataList[index].name = name;
     }
 
     StructType.prototype.toStringInner = function() {
@@ -1026,10 +1025,36 @@
         if (this.isUnique())
             return this === other;
         else
-            return Type.prototype.hash.equals(this);
+            return Type.prototype.equals.call(this, other);
     }
 
     KIARA.StructType = StructType;
+
+    // -- ArrayType --
+
+    function ArrayType(world, elementType) {
+        StructType.call(this, world, "array", NodeKind.NODE_ARRAYTYPE, 1, {unique: false});
+        if (!elementType)
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "elementType cannot be null");
+        this._setElementAt(0, elementType); // internal set element
+        this.setElementNameAt(0, "Element");
+    }
+    util.inherits(ArrayType, StructType);
+    ArrayType.prototype._className = "KIARA.ArrayType";
+
+    ArrayType.get = function(world, elementType) {
+        return world.find(new ArrayType(world, elementType));
+    }
+
+    ArrayType.prototype.getElementType = function() {
+        return this.getElementAt(0);
+    }
+
+    ArrayType.prototype.toString = function() {
+        return "array "+this.toStringInner();
+    }
+
+    KIARA.ArrayType = ArrayType;
 
     // -- Initialization --
 
