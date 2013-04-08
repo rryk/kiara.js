@@ -856,7 +856,7 @@
     // -- UnresolvedSymbolType --
 
     function UnresolvedSymbolType(world) {
-        Type.call(this, world, "unresolved_symbol", NodeKind.NODE_TYPETYPE, 0);
+        Type.call(this, world, "unresolved_symbol", NodeKind.NODE_UNRESOLVEDSYMBOLTYPE, 0);
     }
     util.inherits(UnresolvedSymbolType, Type);
     UnresolvedSymbolType.prototype._className = "KIARA.UnresolvedSymbolType";
@@ -873,7 +873,7 @@
     // -- AnyType --
 
     function AnyType(world) {
-        Type.call(this, world, "unresolved_symbol", NodeKind.NODE_TYPETYPE, 0);
+        Type.call(this, world, "any", NodeKind.NODE_ANYTYPE, 0);
     }
     util.inherits(AnyType, Type);
     AnyType.prototype._className = "KIARA.AnyType";
@@ -958,7 +958,7 @@
             throw new KIARAError(KIARA.INVALID_ARGUMENT, "Number of names is not equal to number of elements");
         this.elementDataList.length = names.length;
         for (var i = 0; i < names.length; ++i) {
-            this.setElementAt(i, names[i]);
+            this.setElementNameAt(i, names[i]);
         }
     }
 
@@ -1055,6 +1055,36 @@
     }
 
     KIARA.ArrayType = ArrayType;
+
+    // -- FixedArrayType --
+
+    function FixedArrayType(world, elementType, numElements) {
+        StructType.call(this, world, "fixedArray", NodeKind.NODE_FIXEDARRAYTYPE, 2, {unique: false});
+        if (!elementType)
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, "elementType cannot be null");
+        this.setElements([elementType, PrimValueType.get(world, numElements)]);
+        this.setElementNames(["Element", "Size"]);
+    }
+    util.inherits(FixedArrayType, StructType);
+    FixedArrayType.prototype._className = "KIARA.FixedArrayType";
+
+    FixedArrayType.get = function(world, elementType, numElements) {
+        return world.find(new FixedArrayType(world, elementType, numElements));
+    }
+
+    FixedArrayType.prototype.getElementType = function() {
+        return this.getElementAt(0);
+    }
+
+    FixedArrayType.prototype.getArraySize = function() {
+        return this.getElementAt(1).getValue();
+    }
+
+    FixedArrayType.prototype.toString = function() {
+        return "fixedArray "+this.toStringInner();
+    }
+
+    KIARA.FixedArrayType = FixedArrayType;
 
     // -- Initialization --
 
