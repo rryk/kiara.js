@@ -98,18 +98,9 @@
 //      3.14159265359           // Float64Array
 //    ]
 
-function KIARAError(errorCode, message) {
-    if (Error.captureStackTrace) // V8
-        Error.captureStackTrace(this, this.constructor); //super helper method to include stack trace in error object
-    else
-        this.stack = (new Error).stack;
-
-    this.name = this.constructor.name;
-    this.errorCode = errorCode || KIARA.GENERIC_ERROR;
-    this.message = message || errorMsg[this.errorCode];
+function realTypeOf(obj) {
+    return Object.prototype.toString.call(obj).slice(8, -1);
 }
-KIARAError.prototype = new Error();
-KIARAError.prototype.constructor = KIARAError;
 
 function Extractor() {
     this._getters = [];
@@ -128,7 +119,7 @@ Extractor.fromPath = function(path) {
                 x.field(value);
                 break;
             default:
-                throw new KIARAError(100, 'Unsupported value : ' + value);
+                throw new KIARA.Error(KIARA.INVALID_ARGUMENT, 'Unsupported value : ' + value);
         }
     }
     return x;
@@ -184,7 +175,7 @@ Extractor.prototype.construct = function (object, valueGetter, options) {
         newObject = this._getters[i](object, options);
         if (!newObject) {
             if (i+1 >= len)
-                throw new KIARAError(100, "Wrong index: "+(i+1));
+                throw new KIARA.Error(100, "Wrong index: "+(i+1));
             newObject = this._constructors[i+1](options);
             this._setters[i](object, getNewObject, options);
         }
@@ -223,11 +214,18 @@ ArrayOutputStream.prototype.writeFloat32 = function(value) {
 ArrayOutputStream.prototype.writeFloat64 = function(value) {
     this.array.push(value);
 }
+// Special functions, usually implemented in terms of typed functions
 ArrayOutputStream.prototype.writeInt = function(value) {
     this.writeInt32(value);
 }
 ArrayOutputStream.prototype.writeUInt = function(value) {
     this.writeUInt32(value);
+}
+ArrayOutputStream.prototype.writeNumber = function(value) {
+    this.writeFloat64(value);
+}
+ArrayOutputStream.prototype.writeBoolean = function(value) {
+    this.writeUInt8(value);
 }
 ArrayOutputStream.prototype.writeString = function(value) {
     this.array.push(value);
@@ -238,81 +236,227 @@ ArrayOutputStream.prototype.writeHint = function(key, value) {
 
 // Serializers
 
-function Serializer() {
-    this._writers = {};
-    this._readers = {};
+function TypeSerializer() {
+    this._serializers = {};
 }
-Serializer.prototype.registerSerializer = function(name, reader, writer) {
-    this._readers[name] = reader;
-    this._writers[name] = writer;
+TypeSerializer.prototype.addSerializer = function(type, serializerCtor) {
+    this._serializers[type] = new serializerCtor(type.getWorld(), this);
 }
-Serializer.prototype.write = function(stream, name, object) {
-    var write = this._writers[name];
-    if (!write)
-        throw new KIARAError("No writer for '"+name+"' type");
-    return write(stream, object);
+TypeSerializer.prototype.write = function(stream, typeOfObject, object) {
+    var serializer = this._serializers[typeOfObject];
+    if (!serializer)
+        throw new KIARA.Error(KIARA.INVALID_ARGUMENT, "No serializer for type "+typeOfObject+" registered");
+    serializer.write(stream, typeOfObject, object);
 }
-Serializer.prototype.read = function(stream, name) {
-    var read = this._readers[name];
-    if (!read)
-        throw new KIARAError("No reader for '"+name+"' type");
-    return read(stream);
+TypeSerializer.prototype.read = function(stream, typeOfObject) {
+    var serializer = this._serializers[typeOfObject];
+    if (!serializer)
+        throw new KIARA.Error(KIARA.INVALID_ARGUMENT, "No serializer for type "+typeOfObject+" registered");
+    return serializer.read(stream, typeOfObject);
 }
 
-function Serializers(serializers) {
-    this._index = 0;
-    this._serializers = serializers;
-}
-Serializers.prototype.resetIndex = function() {
-    this._index = 0;
-}
-Serializers.prototype.getSerializer = function() {
-    if (this._index >= this._serializers.length)
-        throw new Error("Index out of bounds");
-    return this._serializers[this._index++];
+function isStringType(ty, world) {
+    var w = world || KIARA.World();
+    return ty === w.type_string() || ty === w.type_js_string();
 }
 
-//var simpleSer = Serializer();
-//simpleSer.registerSerializer('array', function(stream, )
+function isNumberType(ty, world) {
+    var w = world || KIARA.World();
+    return (ty === w.type_js_number() ||
+            ty === w.type_i8() || ty === w.type_u8() ||
+            ty === w.type_i16() || ty === w.type_u16() ||
+            ty === w.type_i32() || ty === w.type_u32() ||
+            ty === w.type_i64() || ty === w.type_u64() ||
+            ty === w.type_float() || ty === w.type_double());
+}
 
-function ArraySerializer() {
+function isBooleanType(ty, world) {
+    var w = world || KIARA.World();
+    return (ty === w.type_js_boolean() || ty === w.type_boolean());
 }
-ArraySerializer.prototype.getNumNestedSerializers = function() {
-    return 1;
+
+function PrimitiveSerializer(world, serializers) {
+    this.world = world;
+    this.serializers = serializers;
 }
-ArraySerializer.prototype.write = function(stream, nestedSerializers, data) {
-    var serializer = nestedSerializers.getSerializer();
+PrimitiveSerializer.prototype.write = function(stream, typeOfData, data) {
+    if (isStringType(typeOfData, this.world)) {
+        stream.writeString(data);
+    } else if (isBooleanType(typeOfData, this.world)) {
+        stream.writeBoolean(data);
+    } else if (typeOfData === this.world.type_js_number()) {
+        stream.writeNumber(data);
+    } else if (typeOfData === this.world.type_i8()) {
+        stream.writeInt8(data);
+    } else if (typeOfData === this.world.type_u8()) {
+        stream.writeUInt8(data);
+    } else if (typeOfData === this.world.type_i16()) {
+        stream.writeInt16(data);
+    } else if (typeOfData === this.world.type_u16()) {
+        stream.writeUInt16(data);
+    } else if (typeOfData === this.world.type_i32()) {
+        stream.writeInt32(data);
+    } else if (typeOfData === this.world.type_u32()) {
+        stream.writeUInt32(data);
+    } else if (typeOfData === this.world.type_i64()) {
+        stream.writeInt64(data);
+    } else if (typeOfData === this.world.type_u64()) {
+        stream.writeUInt64(data);
+    } else if (typeOfData === this.world.type_float()) {
+        stream.writeFloat32(data);
+    } else if (typeOfData === this.world.type_double()) {
+        stream.writeFloat64(data);
+    }
+    throw new KIARA.Error(KIARA.INVALID_TYPE, "Type "+typeOfData+" is not a primitive type");
+}
+
+PrimitiveSerializer.prototype.read = function(stream, typeOfData) {
+    if (isStringType(typeOfData, this.world)) {
+        return stream.readString();
+    } else if (isBooleanType(typeOfData, this.world)) {
+        return stream.readBoolean();
+    } else if (typeOfData === this.world.type_js_number()) {
+        return stream.readNumber();
+    } else if (typeOfData === this.world.type_i8()) {
+        return stream.readInt8();
+    } else if (typeOfData === this.world.type_u8()) {
+        return stream.readUInt8();
+    } else if (typeOfData === this.world.type_i16()) {
+        return stream.readInt16();
+    } else if (typeOfData === this.world.type_u16()) {
+        return stream.readUInt16();
+    } else if (typeOfData === this.world.type_i32()) {
+        return stream.readInt32();
+    } else if (typeOfData === this.world.type_u32()) {
+        return stream.readUInt32();
+    } else if (typeOfData === this.world.type_i64()) {
+        return stream.readInt64();
+    } else if (typeOfData === this.world.type_u64()) {
+        return stream.readUInt64();
+    } else if (typeOfData === this.world.type_float()) {
+        return stream.readFloat32();
+    } else if (typeOfData === this.world.type_double()) {
+        return stream.readFloat64();
+    }
+    throw new KIARA.Error(KIARA.INVALID_TYPE, "Type "+typeOfData+" is not a primitive type");
+}
+
+function ArraySerializer(world, serializers) {
+    this.world = world;
+    this.serializers = serializers;
+}
+ArraySerializer.prototype.write = function(stream, typeOfData, data) {
+    var typeOfElement = typeOfData.getElementType();
+    var elementSerializer = this.serializers.getSerializer(typeOfElement);
     stream.writeHint('begin', 'array');
     stream.writeUInt(data.length);
     for (var i = 0; i < data.length; ++i) {
-        serializer.write(stream, nestedSerializers, data);
+        elementSerializer.write(stream, typeOfElement, data[i]);
     }
     stream.writeHint('end', 'array');
 }
-ArraySerializer.prototype.read = function(stream, nestedSerializers) {
-    var serializer = nestedSerializers.getSerializer();
+ArraySerializer.prototype.read = function(stream, typeOfData) {
+    var typeOfElement = typeOfData.getElementType();
+    var elementSerializer = this.serializers.getSerializer(typeOfElement);
 
     stream.readHint(); // begin:array
     var len = stream.readUInt();
     var data = new Array(len);
     for (var i = 0; i < len; ++i) {
-        data[i] = serializer.read(stream, nestedSerializers);
+        data[i] = serializer.read(stream, typeOfElement);
     }
     stream.readHint(); // end:array
 }
 
-function TypeSerializer(program) {
-    this.program = program;
-}
-TypeSerializer.prototype.write = function(stream) {
-    for (var i = 0; i < this.program.length; ++i) {
-        var path = this.program[i].path;
-        var type = this.program[i].type;
+//function TypeSerializer(program) {
+//    this.program = program;
+//}
+//TypeSerializer.prototype.write = function(stream) {
+//    for (var i = 0; i < this.program.length; ++i) {
+//        var path = this.program[i].path;
+//        var type = this.program[i].type;
+//    }
+//}
+
+
+function createType(data, world) {
+    world = world || KIARA.World();
+    if (KIARA.isString(data))
+        return world.type_js_string();
+    if (KIARA.isNumber(data))
+        return world.type_js_number();
+    if (KIARA.isBoolean(data))
+        return world.type_js_boolean();
+    if (KIARA.isArray(data)) {
+        var any = KIARA.AnyType.get(world);
+        var types = [];
+        var typeSet = {};
+        for (var i = 0; i < data.length; ++i) {
+            var ty = createType(data[i]);
+            if (ty === any) {
+                // any unifies everything
+                types = [any];
+                break;
+            }
+            if (!typeSet.hasOwnProperty(ty)) {
+                types.push(ty);
+                typeSet[ty] = true;
+            }
+        }
+        if (types.length === 1)
+            return KIARA.ArrayType.get(world, types[0]);
+        else
+            return KIARA.ArrayType.get(world, KIARA.VariantType.get(world, types));
     }
+    if (KIARA.isObject(data)) {
+        var elementTypes = [];
+        var elementNames = [];
+        for (var key in data) {
+            if (data.hasOwnProperty(key)) {
+                elementNames.push(key);
+                elementTypes.push(createType(data[key]));
+            }
+        }
+        var ty;
+        if (elementTypes.length === 0) {
+            ty = KIARA.StructType.get(world, "", 0);
+        } else {
+            ty = KIARA.StructType.create(world, "", elementTypes);
+            ty.setElementNames(elementNames);
+        }
+        return ty;
+    }
+    if (data === undefined || data === null) {
+        return KIARA.AnyType.get(world);
+    }
+    throw new KIARA.Error(KIARA.INVALID_TYPE, "Cannot compute type for object: "+data);
 }
 
-function realTypeOf(obj) {
-    return Object.prototype.toString.call(obj).slice(8, -1);
+function runTest1() {
+    console.log("Serializer test 1");
+
+
+
+    var data = [
+        {
+            name:{
+                first:"str1",
+                last:"str2"
+            },
+            ratio:3.14159265359
+        },
+        [
+            [
+                {n:"ab", v:123},
+                {n:"bc", v:321}
+            ],
+            [
+                {n:"cd", v:231}
+            ]
+        ]
+    ];
+
+    console.log(createType(data).toString());
 }
 
 function runTest() {
