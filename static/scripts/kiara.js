@@ -328,7 +328,10 @@
     NodeKind.NODE_PRIMTYPE_c_float = nextNodeKind();
     NodeKind.NODE_PRIMTYPE_c_double = nextNodeKind();
     NodeKind.NODE_PRIMTYPE_c_longdouble = nextNodeKind();
-    NodeKind.LAST_PRIMTYPE_NODE = nextNodeKind(NodeKind.NODE_PRIMTYPE_c_longdouble);
+    NodeKind.NODE_PRIMTYPE_js_number = nextNodeKind();
+    NodeKind.NODE_PRIMTYPE_js_string = nextNodeKind();
+    //NodeKind.LAST_PRIMTYPE_NODE = nextNodeKind(NodeKind.NODE_PRIMTYPE_c_longdouble);
+    NodeKind.LAST_PRIMTYPE_NODE = nextNodeKind(NodeKind.NODE_PRIMTYPE_js_string);
     NodeKind.FIRST_C_PRIMTYPE_NODE = nextNodeKind(NodeKind.NODE_PRIMTYPE_c_int8_t);
     NodeKind.NUM_PRIMTYPES = nextNodeKind(NodeKind.LAST_PRIMTYPE_NODE - NodeKind.FIRST_PRIMTYPE_NODE);
     NodeKind.NODE_VOIDTYPE = nextNodeKind(NodeKind.LAST_PRIMTYPE_NODE + 1);
@@ -369,6 +372,8 @@
         PRIMTYPE_c_float    : NodeKind.NODE_PRIMTYPE_c_float,
         PRIMTYPE_c_double   : NodeKind.NODE_PRIMTYPE_c_double,
         PRIMTYPE_c_longdouble : NodeKind.NODE_PRIMTYPE_c_longdouble,
+        PRIMTYPE_js_number : NodeKind.NODE_PRIMTYPE_js_number,
+        PRIMTYPE_js_string : NodeKind.NODE_PRIMTYPE_js_string,
         FIRST_C_PRIMTYPE    : NodeKind.FIRST_C_PRIMTYPE_NODE
     };
 
@@ -379,9 +384,8 @@
         return nextGlobalID++;
     }
 
-    function KIARAObject(className, world) {
+    function KIARAObject(world) {
         this._id = generateID();
-        this._className = className;
         this._world = world;
     }
     KIARAObject.prototype.getClassName = function() {
@@ -402,19 +406,21 @@
     KIARAObject.prototype.equals = function(other) {
         return this === other;
     }
+    KIARAObject.prototype._className = "KIARA.Object";
 
     KIARA.Object = KIARAObject;
 
     // -- KIARA.Namespace --
 
     function Namespace(world, name) {
-        KIARAObject.call(this, "KIARA.Namespace", world);
+        KIARAObject.call(this, world);
         this.name = name;
         this.parent = null;
         this.typeMap = {};
         this.subnamespaces = [];
     }
     util.inherits(Namespace, KIARAObject);
+    Namespace.prototype._className = "KIARA.Namespace";
 
     Namespace.prototype.getName = function() {
         return this.name;
@@ -449,7 +455,7 @@
             throw new KIARAError(KIARA.INVALID_ARGUMENT,"Type '"+name+"' already defined.");
 
         this.typeMap[name] = type;
-        if (takeOwnership) {
+        if (takeOwnership || takeOwnership === undefined) {
             type.setNamespace(this);
         }
     }
@@ -475,7 +481,7 @@
     // -- KIARA.Type --
 
     function Type(world, name, kind, numOrElems) {
-        KIARAObject.call(this, "KIARA.Type", world);
+        KIARAObject.call(this, world);
         this.name = name;
         this.kind = kind;
         this.namespace = null;
@@ -487,6 +493,7 @@
             this.elements = [];
     }
     util.inherits(Type, KIARAObject);
+    Type.prototype._className = "KIARA.Type";
 
     Type.prototype.getNamespace = function() { return this.namespace; }
     Type.prototype.setNamespace = function(newNamespace) { this.namespace = newNamespace; }
@@ -569,6 +576,8 @@
     NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_float] = "c_float";
     NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_double] = "c_double";
     NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_c_longdouble] = "c_longdouble";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_js_number] = "js_number";
+    NameOfPrimTypeKind[PrimTypeKind.PRIMTYPE_js_string] = "js_string";
 
     var ByteSizeOfPrimTypeKind = {};
     ByteSizeOfPrimTypeKind[PrimTypeKind.PRIMTYPE_i8] = 1;
@@ -597,9 +606,9 @@
 
     function PrimType(world, kind) {
         Type.call(this, world, NameOfPrimTypeKind[kind], kind, 0);
-        this._className = "KIARA.PrimType";
     }
     util.inherits(PrimType, Type)
+    PrimType.prototype._className = "KIARA.PrimType";
 
     PrimType.getNameOfPrimTypeKind = function(kind) {
         return NameOfPrimTypeKind[kind];
@@ -662,6 +671,18 @@
 
     // -- World --
 
+    var worldBuiltinTypes = [
+        "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "float", "double", "boolean", "string",
+        "c_int8_t", "c_uint8_t", "c_int16_t", "c_uint16_t", "c_int32_t", "c_uint32_t",
+        "c_int64_t", "c_uint64_t",
+        //"c_char", "c_wchar_t", "c_schar", "c_uchar", "c_short", "c_ushort",
+        //"c_int", "c_uint", "c_long", "c_ulong", "c_longlong", "c_ulonglong",
+        //"c_size_t", "c_ssize_t",
+        "c_float", "c_double", "c_longdouble",
+        "js_number", "js_string"
+    ];
+    var worldTypes = worldBuiltinTypes;
+
     function World() {
         this.objects = {};
         this.namespace = new Namespace(this, "kiara");
@@ -690,17 +711,28 @@
         this.c_float    = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_float));
         this.c_double   = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_double));
         this.c_longdouble = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_c_longdouble));
+
+        this.js_number = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_js_number));
+        this.js_string = this.find(new PrimType(this, PrimTypeKind.PRIMTYPE_js_string));
+
+        for (var i = 0; i < worldBuiltinTypes.length; ++i) {
+            var tn = worldBuiltinTypes[i];
+            this.namespace.bindType(tn, this[tn]);
+        }
+    }
+    World.prototype.builtinTypeNames = worldBuiltinTypes;
+    World.prototype.typeNames = worldTypes;
+
+    World.prototype.getWorldNamespace = function() {
+        return this.namespace;
     }
 
-    var worldTypes = [
-        "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "float", "double", "boolean", "string",
-        "c_int8_t", "c_int8_t", "c_uint8_t", "c_int16_t", "c_uint16_t", "c_int32_t", "c_uint32_t",
-        "c_int64_t", "c_uint64_t", "c_char", "c_wchar_t", "c_schar", "c_uchar", "c_short",
-        "c_ushort", "c_int", "c_uint", "c_long", "c_ulong", "c_longlong", "c_ulonglong",
-        "c_size_t", "c_ssize_t", "c_float", "c_double", "c_longdouble"];
+    World.prototype.createNamespace = function(name) {
+        return new Namespace(this, name);
+    }
 
-    for (var i = 0; i < worldTypes.length; ++i) {
-        var tn = worldTypes[i];
+    for (var i = 0; i < World.prototype.typeNames.length; ++i) {
+        var tn = World.prototype.typeNames[i];
         World.prototype["type_"+tn] = new Function("return this."+tn+";");
     }
 
