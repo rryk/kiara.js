@@ -188,7 +188,7 @@ Extractor.prototype.construct = function (object, valueGetter, options) {
 }
 
 function ArrayOutputStream(array) {
-    this.array = array;
+    this.array = array || [];
 }
 ArrayOutputStream.prototype.writeInt8 = function(value) {
     this.array.push(value);
@@ -236,32 +236,42 @@ ArrayOutputStream.prototype.writeHint = function(key, value) {
 
 // Serializers
 
-function TypeSerializer() {
-    this._serializers = {};
+function TypeSerializer(world) {
+    this._world = world || KIARA.World();
+    this._typeMap = {};  // maps type to serializer
+    this._matchers = []; // array of pairs [match function, serializer]
 }
-TypeSerializer.prototype.addSerializer = function(type, serializerCtor) {
-    this._serializers[type] = new serializerCtor(type.getWorld(), this);
+TypeSerializer.prototype.registerSerializer = function(typeOrMatcher, serializerCtor) {
+    var serializer = new serializerCtor(this._world, this);
+    if (KIARA.isFunction(typeOrMatcher))
+        this._matchers.push([typeOrMatcher, serializer]);
+    else
+        this._typeMap[typeOrMatcher] = serializer;
+}
+TypeSerializer.prototype.getSerializer = function(type) {
+    var serializer = this._typeMap[type];
+    if (serializer)
+        return serializer;
+    for (var i = 0; i < this._matchers.length; ++i) {
+        if (this._matchers[i][0](type))
+            return this._matchers[i][1];
+    }
+    throw new KIARA.Error(KIARA.INVALID_TYPE, "No serializer for type: "+type+" registered");
 }
 TypeSerializer.prototype.write = function(stream, typeOfObject, object) {
-    var serializer = this._serializers[typeOfObject];
-    if (!serializer)
-        throw new KIARA.Error(KIARA.INVALID_ARGUMENT, "No serializer for type "+typeOfObject+" registered");
-    serializer.write(stream, typeOfObject, object);
+    this.getSerializer(typeOfObject).write(stream, typeOfObject, object);
 }
 TypeSerializer.prototype.read = function(stream, typeOfObject) {
-    var serializer = this._serializers[typeOfObject];
-    if (!serializer)
-        throw new KIARA.Error(KIARA.INVALID_ARGUMENT, "No serializer for type "+typeOfObject+" registered");
-    return serializer.read(stream, typeOfObject);
+    return this.getSerializer(typeOfObject).read(stream, typeOfObject);
 }
 
-function isStringType(ty, world) {
-    var w = world || KIARA.World();
+function isStringType(ty) {
+    var w = ty.getWorld();
     return ty === w.type_string() || ty === w.type_js_string();
 }
 
-function isNumberType(ty, world) {
-    var w = world || KIARA.World();
+function isNumberType(ty) {
+    var w = ty.getWorld();
     return (ty === w.type_js_number() ||
             ty === w.type_i8() || ty === w.type_u8() ||
             ty === w.type_i16() || ty === w.type_u16() ||
@@ -270,9 +280,22 @@ function isNumberType(ty, world) {
             ty === w.type_float() || ty === w.type_double());
 }
 
-function isBooleanType(ty, world) {
-    var w = world || KIARA.World();
+function isBooleanType(ty) {
+    var w = ty.getWorld();
     return (ty === w.type_js_boolean() || ty === w.type_boolean());
+}
+
+function isPrimitiveType(ty) {
+    return isStringType(ty) || isBooleanType(ty) || isNumberType(ty);
+}
+
+function isArrayType(ty) {
+    return ty instanceof KIARA.ArrayType;
+}
+
+function isStructType(ty) {
+    //return Object.getPrototypeOf(ty) === KIARA.StructType.prototype;
+    return ty.constructor === KIARA.StructType;
 }
 
 function PrimitiveSerializer(world, serializers) {
@@ -280,9 +303,9 @@ function PrimitiveSerializer(world, serializers) {
     this.serializers = serializers;
 }
 PrimitiveSerializer.prototype.write = function(stream, typeOfData, data) {
-    if (isStringType(typeOfData, this.world)) {
+    if (isStringType(typeOfData)) {
         stream.writeString(data);
-    } else if (isBooleanType(typeOfData, this.world)) {
+    } else if (isBooleanType(typeOfData)) {
         stream.writeBoolean(data);
     } else if (typeOfData === this.world.type_js_number()) {
         stream.writeNumber(data);
@@ -306,8 +329,8 @@ PrimitiveSerializer.prototype.write = function(stream, typeOfData, data) {
         stream.writeFloat32(data);
     } else if (typeOfData === this.world.type_double()) {
         stream.writeFloat64(data);
-    }
-    throw new KIARA.Error(KIARA.INVALID_TYPE, "Type "+typeOfData+" is not a primitive type");
+    } else
+        throw new KIARA.Error(KIARA.INVALID_TYPE, "Type "+typeOfData+" is not a primitive type");
 }
 
 PrimitiveSerializer.prototype.read = function(stream, typeOfData) {
@@ -368,15 +391,34 @@ ArraySerializer.prototype.read = function(stream, typeOfData) {
     stream.readHint(); // end:array
 }
 
-//function TypeSerializer(program) {
-//    this.program = program;
-//}
-//TypeSerializer.prototype.write = function(stream) {
-//    for (var i = 0; i < this.program.length; ++i) {
-//        var path = this.program[i].path;
-//        var type = this.program[i].type;
-//    }
-//}
+function StructSerializer(world, serializers) {
+    this.world = world;
+    this.serializers = serializers;
+}
+StructSerializer.prototype.write = function(stream, typeOfData, data) {
+    stream.writeHint('begin', 'struct');
+    stream.writeUInt(typeOfData.getNumElements());
+    for (var i = 0; i < typeOfData.getNumElements(); ++i) {
+        var elementName = typeOfData.getElementNameAt(i);
+        var elementType = typeOfData.getElementAt(i);
+        var elementSerializer = this.serializers.getSerializer(elementType);
+        stream.writeHint('element', elementName); // ??? write elementName ?
+        elementSerializer.write(stream, elementType, data[elementName]);
+    }
+    stream.writeHint('end', 'struct');
+}
+StructSerializer.prototype.read = function(stream, typeOfData) {
+    var typeOfElement = typeOfData.getElementType();
+    var elementSerializer = this.serializers.getSerializer(typeOfElement);
+
+    stream.readHint(); // begin:array
+    var len = stream.readUInt();
+    var data = new Array(len);
+    for (var i = 0; i < len; ++i) {
+        data[i] = serializer.read(stream, typeOfElement);
+    }
+    stream.readHint(); // end:array
+}
 
 
 function createType(data, world) {
@@ -435,8 +477,6 @@ function createType(data, world) {
 function runTest1() {
     console.log("Serializer test 1");
 
-
-
     var data = [
         {
             name:{
@@ -456,7 +496,21 @@ function runTest1() {
         ]
     ];
 
-    console.log(createType(data).toString());
+    var ty1 = createType(data[0]);
+    var ty2 = createType(data[1]);
+    console.log(ty1.toString());
+    console.log(ty2.toString());
+
+    var tser = new TypeSerializer();
+    tser.registerSerializer(isPrimitiveType, PrimitiveSerializer);
+    tser.registerSerializer(isArrayType, ArraySerializer);
+    tser.registerSerializer(isStructType, StructSerializer);
+
+    var stream = new ArrayOutputStream();
+    tser.write(stream, ty1, data[0]);
+    tser.write(stream, ty2, data[1]);
+    console.log(stream.array);
+    console.log(JSON.stringify(stream.array));
 }
 
 function runTest() {

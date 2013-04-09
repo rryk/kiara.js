@@ -51,22 +51,27 @@
     // Utilities
 
     function isNumber(value) {
-        return toString.call(value) === '[object Number]';
+        return Object.prototype.toString.call(value) === '[object Number]';
     }
     function isString(value) {
-        return toString.call(value) === '[object String]';
+        return Object.prototype.toString.call(value) === '[object String]';
     }
     function isBoolean(value) {
-        return value === true || value === false || toString.call(value) === '[object Boolean]';
+        return value === true || value === false || Object.prototype.toString.call(value) === '[object Boolean]';
     }
     function isFunction(value) {
-        return toString.call(value) === '[object Function]';
+        return Object.prototype.toString.call(value) === '[object Function]';
+    }
+    if (typeof (/./) !== 'function') {
+        function isFunction(value) {
+            return typeof value === 'function';
+        }
     }
     function isArray(value) {
-        return toString.call(value) === '[object Array]';
+        return Object.prototype.toString.call(value) === '[object Array]';
     }
     function isObject(value) {
-        return toString.call(value) === '[object Object]';
+        return Object.prototype.toString.call(value) === '[object Object]';
     }
     KIARA.isNumber = isNumber;
     KIARA.isString = isString;
