@@ -60,6 +60,56 @@ function registerProtocols() {
     }
 
     KIARA.registerProtocol('xmlrpc', XmlRpcProtocol);
+
+    // WAMP (WebSocket Application Messaging Protocol)
+
+    function WAMProtocol(url) {
+        KIARA.Protocol.call(this, 'wamp');
+        this._url = url;
+        this._requestedCalls = [];
+        this._dispatchedCalls = [];
+        this._session = null;
+        this._failureReason = null;
+        ab.connect(url, this.sessionEstablished, this.sessionInterrupted);
+    }
+
+    KIARA.inherits(WAMProtocol, KIARA.Protocol);
+
+    WAMProtocol.prototype.callMethod = function(callResponse, args) {
+      var call = { callResponse: callResponse, args: args };
+      if (this._session != null) {               // connected - dispatch calls
+        args = args.splice(0, 0, "service:" + callResponse.getMethodName());
+        var that = this;
+        this._session.call.apply(this._session, args).then(function(result) {
+          callResponse.setResult(result, 'result');
+          that._dispatchedCalls.splice(that._dispatchedCalls.indexOf(call), 1);
+        });
+        this._dispatchedCalls.push(call);
+      } else if (this._failureReason != null) {  // connection failed - return error
+        callResponse.setResult(this._failureReason, 'error');
+      } else {                                   // didn't connect yet - cache call to be called later
+        this._requestedCalls.push(call);
+      }
+    };
+
+    // Callback when session is established. Executes all previously cached calls.
+    WAMProtocol.sessionEstablished = function(session) {
+        this._session = session;
+        this._session.prefix("service", this._url + "#");
+        for (var requestedCall in this._requestedCalls)
+          this.callMethod(requestedCall.callResponse, requestedCall.args);
+    };
+
+    // Callback when session was interrupted. Fails all previously cached or dispatched calls.
+    WAMProtocol.sessionInterrupted = function(code, reason) {
+        this._failureReason = reason;
+        for (var dispatchedCall in this._dispatchedCalls)
+          dispatchedCall.callResponse.setResult(reason, 'error');
+        for (var requestedCall in this._requestedCalls)
+          requestedCall.callResponse.setResult(reason, 'error');
+    };
+
+    KIARA.registerProtocol('wamp', WAMProtocol);
 }
 
 // -- End Protocol Registration --
