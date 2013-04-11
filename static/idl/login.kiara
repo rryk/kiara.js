@@ -1,0 +1,53 @@
+namespace * opensim;
+
+struct FullName {
+  string first;  // First name of the avatar.
+  string last;   // Last name of the avatar.
+}
+
+struct LoginRequest {
+  FullName name;
+  string pwdHash;        // The avatar password encrypted using MD5 encryption: '$1$' + <passwd_md5>.
+  string start;          // Starting location, "first", "last" or "uri:<existing region name>&<x>&<y>&<z>"
+  string channel;        // The name of the client viewer.
+  string version;        // Version number of the client viewer.
+  string platform;       // The platform of the client.
+  string mac;            // The MAC address associated with the client's computer.
+  string[] options;      // Optional array of character strings.
+  string id0;            // Hardware hash (based on the serial number of the first hard drive in Windows) used for
+                         // uniquely identifying computers.
+  string agree_to_tos;   // Whether or not the user has agreed to the Terms of Service.
+  string read_critical;  // Whether or not the user has read important messages such as Terms of Service updates.
+  string viewer_digest;  // MD5 hash of the viewer executable, only redlevant when the channel is set to an official
+                         // Second Life viewer.
+}
+
+enum AccessType {
+  Mature,
+  Teen
+}
+
+struct LoginResponse {
+  FullName name;
+  u32 sim_ip;                // IP address used to establish UDP connection with startup simulator.
+  string start_location;     // Result of 'start' parameter as specified in input parameters.
+  u64 seconds_since_epoch;   // Time on the server in seconds since 01.01.1970 00:00.
+  string message;            // Message of the day from login.
+  u32 circuit_code;          // Used to validate UDP connection with login simulator.
+  u16 sim_port;              // Port used to establish UDP connection with login simulator.
+  string secure_session_id;  // Secure token for this login session -- never used in UDP packets.
+  string look_at;            // Initial camera direction (3D vector) of avatar: r + <real>, r + <real>, r + <real>.
+  string agent_id;           // Permanent UUID of avatar.
+  string inventory_host;     // Name of database used for inventory.
+  i32 region_y;              // The 'y' grid coordinate of the region.
+  i32 region_x;              // The 'x' grid coordinate of the region.
+  string seed_capability;    // URL for the seed capability (used to obtain other capabilities).
+  AccessType agent_access;   // Authorization information about access to main/mature grid as opposed to teen grid.
+  string session_id;         // UUID for current session with simulator. Used in UDP message passing.
+}
+
+[WebSocket("http://yellow.cs.uni-saarland.de:9000/kiara/login")]
+service login {
+  LoginResponse login(LoginRequest request);
+  int foobar(float a, FullName b);
+}

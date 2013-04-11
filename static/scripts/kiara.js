@@ -1331,6 +1331,7 @@
         throw new KIARAError(KIARA.UNSUPPORTED_FEATURE, "Protocol '"+this.name+"' not implemented");
     }
     Protocol.prototype.generateFuncWrapper = function(connection, methodDescriptor, options) {
+        // TODO(rryk): Add support for [Oneway] calls.
         checkMethodDescriptor(methodDescriptor);
         var that = this;
         return function() {
@@ -1339,7 +1340,7 @@
             return callResponse;
         }
     }
-    Protocol.prototype.registerFuncImplementation = function(methodDescriptor, nativeMethod) {
+    Protocol.prototype.registerFunc = function(methodDescriptor, nativeMethod) {
         throw new KIARAError(KIARA.UNSUPPORTED_FEATURE, "Protocol '"+this.name+"' not implemented");
     }
 
@@ -1414,7 +1415,7 @@
 
         var parsedMapping = this._parseTypeMapping(qualifiedMethodName, typeMapping);
         var methodDescriptor = this._protocol.createMethodDescriptor(qualifiedMethodName, parsedMapping);
-        return this._protocol.registerFuncImplementation(methodDescriptor, nativeMethod);
+        return this._protocol.registerFunc(methodDescriptor, nativeMethod);
     }
 
     Connection.prototype.loadIDL = function(url, userCallback) {
@@ -1441,8 +1442,10 @@
         //???BEGIN PROTOCOL SPECIFIC PART
         //var protocolName = 'jsonrpc';
         //var protocolUrl = 'http://' + location.hostname + ':8080/rpc/calc';
-        var protocolName = 'xmlrpc';
-        var protocolUrl = 'http://' + location.hostname + ':8080/xmlrpc/calc';
+        //var protocolName = 'xmlrpc';
+        //var protocolUrl = 'http://' + location.hostname + ':8080/xmlrpc/calc';
+        var protocolName = 'websocket-json';
+        var protocolUrl = 'http://' + location.hostname + ':9000/ws-json/login';
         //???END PROTOCOL SPECIFIC PART
 
         var protocolCtor = getProtocol(protocolName);
