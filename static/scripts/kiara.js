@@ -1330,7 +1330,7 @@
     Protocol.prototype.callMethod = function(callResponse, args) {
         throw new KIARAError(KIARA.UNSUPPORTED_FEATURE, "Protocol '"+this.name+"' not implemented");
     }
-    Protocol.prototype.generateClientFunc = function(connection, methodDescriptor, options) {
+    Protocol.prototype.generateFuncWrapper = function(connection, methodDescriptor, options) {
         checkMethodDescriptor(methodDescriptor);
         var that = this;
         return function() {
@@ -1338,6 +1338,9 @@
             that.callMethod(callResponse, arguments);
             return callResponse;
         }
+    }
+    Protocol.prototype.registerFuncImplementation = function(methodDescriptor, nativeMethod) {
+        throw new KIARAError(KIARA.UNSUPPORTED_FEATURE, "Protocol '"+this.name+"' not implemented");
     }
 
     function registerProtocol(name, protocolCtor) {
@@ -1378,10 +1381,10 @@
         return { };
     }
 
-    // Constructs a client function that will automatically serialize the method call and send it to the server.
+    // Constructs a function wrapper that will automatically serialize the method call and send it to the server.
     // The function will return an empty object, which can be used to set up a callback when response is received:
     //
-    //   var login = conn.generateClientFunc(...);
+    //   var login = conn.generateFuncWrapper(...);
     //   login(args).on('return', function(returnValue) { /* process return value here */ });
     //
     // Callback will be called with one argument that corresponds to the return value of the function in IDL.
@@ -1396,13 +1399,22 @@
     // exception is invoked when exception is returned from the remote side
     // when both result and exception callbacks are defined, result is not called on
     // remote exception.
-    Connection.prototype.generateClientFunc = function(qualifiedMethodName, typeMapping, options) {
+    Connection.prototype.generateFuncWrapper = function(qualifiedMethodName, typeMapping, options) {
         if (!this._protocol)
-            throw new KIARAError(KIARA.INVALID_OPERATION, "Client function cannot be generated before protocol is known, establish connection first");
+            throw new KIARAError(KIARA.INVALID_OPERATION, "Function wrapper cannot be generated before protocol is known, establish connection first");
 
         var parsedMapping = this._parseTypeMapping(qualifiedMethodName, typeMapping);
         var methodDescriptor = this._protocol.createMethodDescriptor(qualifiedMethodName, parsedMapping);
-        return this._protocol.generateClientFunc(this, methodDescriptor, options);
+        return this._protocol.generateFuncWrapper(this, methodDescriptor, options);
+    }
+
+    Connection.prototype.registerFuncImplementation = function(qualifiedMethodName, typeMapping, nativeMethod) {
+        if (!this._protocol)
+            throw new KIARAError(KIARA.INVALID_OPERATION, "Native method cannot be registered before protocol is known, establish connection first");
+
+        var parsedMapping = this._parseTypeMapping(qualifiedMethodName, typeMapping);
+        var methodDescriptor = this._protocol.createMethodDescriptor(qualifiedMethodName, parsedMapping);
+        return this._protocol.registerFuncImplementation(methodDescriptor, nativeMethod);
     }
 
     Connection.prototype.loadIDL = function(url, userCallback) {

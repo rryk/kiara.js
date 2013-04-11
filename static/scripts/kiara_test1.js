@@ -138,14 +138,14 @@ function runTest() {
 
             //conn.set('protocol', 'xmlrpc');
 
-            console.log("[1] Creating client func...");
-            var add = conn.generateClientFunc("calc.add", "Request.a : Args[0]; Request.b : Args[1]; Response : Result;");
-            console.log("[1] Client func: ", add);
+            console.log("[1] Creating func wrapper...");
+            var add = conn.generateFuncWrapper("calc.add", "Request.a : Args[0]; Request.b : Args[1]; Response : Result;");
+            console.log("[1] Func wrapper: ", add);
 
-            console.log("[1] Calling client func with request: [1, 2]");
+            console.log("[1] Calling func wrapper with request: [1, 2]");
             var addCall = add(1, 2);
             addCall.on('result', function(result, exception) {
-                console.log("[1] Received return value for the client func: ", result);
+                console.log("[1] Received return value for the func wrapper: ", result);
             });
             addCall.on('error', function(error) {
                 console.log("[1] Connection error:", error);
@@ -154,19 +154,19 @@ function runTest() {
                 console.log("[1] Remote exception: ", exception);
             });
 
-            var addf = conn.generateClientFunc("calc.addf",
+            var addf = conn.generateFuncWrapper("calc.addf",
                 "Request.a : Args[0]; Request.b : Args[1]; Response : Result;",
                 {
                     'onresult' : function(result, exception) {
-                        console.log("[2] Received return value for the client func: ", result);
+                        console.log("[2] Received return value for the func wrapper: ", result);
                     },
                     'onerror' : function(error) {
                         console.log("[2] Connection error:", error);
                     }
                 });
-            console.log("[2] Client func: ", addf);
+            console.log("[2] Func wrapper: ", addf);
 
-            console.log("[2] Calling client func with request: [3, 4]");
+            console.log("[2] Calling func wrapper with request: [3, 4]");
             var addfCall = addf(3, 4);
 
             console.log("[2] Call object: ", addfCall);
