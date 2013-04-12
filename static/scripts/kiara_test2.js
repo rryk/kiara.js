@@ -176,7 +176,7 @@ function runTest() {
                 viewer_digest: "00000000-0000-0000-0000-000000000000"
             };
 
-            console.log("[1] Calling func wrapper with request: [1, 2]");
+            console.log("[1] Calling func wrapper with request: [", loginRequest, "]");
             var loginCall = login(loginRequest);
             loginCall.on('result', function(exception, result) {
                 console.log("[1] Received return value for the func wrapper: ", result);
