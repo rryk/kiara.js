@@ -16,7 +16,7 @@ function registerProtocols() {
         this._funcs = {};
         this._activeCalls = {};
         this._cachedCalls = [];
-        this._callID = 0;
+        this._nextCallID = 0;
         this._reconnectAttempts = 0;
         
         // Initialize connection.
@@ -38,7 +38,7 @@ function registerProtocols() {
     
     JSONWebSocket.prototype.callMethod = function(callResponse, args) {
         if (this._wb.readyState == OPEN) {
-            var callID = this._callID++;
+            var callID = this._nextCallID++;
             var request = [ "call", callID, callResponse.getMethodName() ].concat(args);
             this._wb.send(JSON.stringify(request));
             this._activeCalls[callID] = callResponse;
@@ -85,6 +85,8 @@ function registerProtocols() {
           throw new KIARAError(KIARA.CONNECTION_ERROR, 
                                "Received a call for an unregistered method: " + methodName);
         }
+      } else {
+          throw new KIARAError(KIARA.CONNECTION_ERROR, "Unknown message type: " + msgType);
       }
     }
 
