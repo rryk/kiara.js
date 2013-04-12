@@ -19,8 +19,7 @@ function registerProtocols() {
         this._nextCallID = 0;
         this._reconnectAttempts = 0;
         
-        // Initialize connection.
-        connect();
+        this.connect();
     }
 
     KIARA.inherits(JSONWebSocket, KIARA.Protocol);
@@ -30,16 +29,17 @@ function registerProtocols() {
     //   [ 'call-reply', callID, success, retValOrException ]
 
     JSONWebSocket.prototype.connect = function() {
-        this._wb = new WebSocket(url);
-        this._wb.onconnect = this._handleConnect;
-        this._wb.onerror = this._wb.onclose = this._handleDisconnect;
-        this._wb.onmessage = this._handleMessage;
+        this._wb = new WebSocket(this._url);
+        this._wb.onopen = this._handleConnect.bind(this);
+        this._wb.onerror = this._wb.onclose = this._handleDisconnect.bind(this);
+        this._wb.onmessage = this._handleMessage.bind(this);
     }
     
     JSONWebSocket.prototype.callMethod = function(callResponse, args) {
-        if (this._wb.readyState == OPEN) {
+        if (this._wb.readyState == WebSocket.OPEN) {
             var callID = this._nextCallID++;
-            var request = [ "call", callID, callResponse.getMethodName() ].concat(args);
+            var argsArray = Array.prototype.slice.call(args);
+            var request = [ "call", callID, callResponse.getMethodName() ].concat(argsArray);
             this._wb.send(JSON.stringify(request));
             this._activeCalls[callID] = callResponse;
         } else {
@@ -48,16 +48,16 @@ function registerProtocols() {
     }
     
     JSONWebSocket.prototype.registerFunc = function(methodDescriptor, nativeMethod) {
-        this._funcs[methodDescription.methodName] = nativeMethod;
+        this._funcs[methodDescriptor.methodName] = nativeMethod;
     }
     
     JSONWebSocket.prototype._handleMessage = function(message) {
-      var data = JSON.parse(message);
+      var data = JSON.parse(message.data);
       var msgType = data[0];
       if (msgType == 'call-reply') {
         var callID = data[1];
         if (callID in this._activeCalls) {
-          var callResponse = this_.calls[callID];
+          var callResponse = this._activeCalls[callID];
           var success = data[2];
           var retValOrException = data[3];
           callResponse.setResult(retValOrException, success ? 'result' : 'exception');
@@ -70,10 +70,10 @@ function registerProtocols() {
         var callID = data[1];
         var methodName = data[2];
         if (methodName in this._funcs) {
-          var args = data.splice(0, 3);
+          var args = data.slice(3);
           var response = [ 'call-reply', callID ];
           try {
-            retVal = this._funcs[methodName].apply(args);
+            retVal = this._funcs[methodName].apply(null, args);
             response.push(true);
             response.push(retVal);
           } catch (exception) {
@@ -91,22 +91,28 @@ function registerProtocols() {
     }
 
     JSONWebSocket.prototype._handleConnect = function() {
-        for (var call in this._cachedCalls)
+        for (var callIndex in this._cachedCalls) {
+          var call = this._cachedCalls[callIndex];
           this.callMethod(call[0], call[1])
+        }
         call._cachedCalls = [];
     }
 
     JSONWebSocket.prototype._handleDisconnect = function(event) {
         this._reconnectAttempts++;
         if (this._reconnectAttempts <= this.MAX_RECONNECT_ATTEMPTS) {
-            connect();
+            this.connect();
         } else {
-            for (var call in this._activeCalls)
-                call.setResult(event, 'error');
+            for (var callID in this._activeCalls) {
+              var callResponse = this._activeCalls[callID];
+              callResponse.setResult(event, 'error');
+            }
             this._activeCalls = {};
 
-            for (var call in this._cachedCalls)
-                call.setResult(event, 'error');
+            for (var callIndex in this._cachedCalls) {
+              var cachedCall = this._cachedCalls[callIndex];
+              cachedCall[0].setResult(event, 'error');
+            }
             this._cachedCalls = [];
         }
     }
@@ -137,15 +143,20 @@ function runTest() {
 
             console.log("[1] Creating func wrapper...");
             var login = conn.generateFuncWrapper(
-                "opensim.login.login", "Request.request : Args[0]; Response : Result;");
+                "opensim.login.login",
+                "Request.request : Args[0]; Response : Result;");
             console.log("[1] Func wrapper: ", login);
 
             var retValue = 42;
-            conn.registerFuncImplementation("opensim.login.foobar", function(arg1, arg2) {
-                console.log("Received call to opensim.login.foobar with arg1 = ", arg1, " and arg2 = ", arg2);
-                console.log("Returning ", retValue, " from opensim.login.foobar.");
-                return retValue;
-            });
+            conn.registerFuncImplementation(
+                "opensim.login.foobar",
+                "Request.a : Args[0]; Request.b : Args[1]; Response : Result;",
+                function(arg1, arg2) {
+                  console.log("Received call to opensim.login.foobar with arg1 = ", arg1, " and arg2 = ", arg2);
+                  console.log("Returning ", retValue, " from opensim.login.foobar.");
+                  return retValue;
+                }
+            );
 
             var loginRequest = {
                 name: {
