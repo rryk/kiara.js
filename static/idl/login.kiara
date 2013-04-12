@@ -46,7 +46,7 @@ struct LoginResponse {
   string session_id;         // UUID for current session with simulator. Used in UDP message passing.
 }
 
-[WebSocket("http://yellow.cs.uni-saarland.de:9000/kiara/login")]
+[WebSocket("ws://yellow.cs.uni-saarland.de:9000/ws-json/login")]
 service login {
   LoginResponse login(LoginRequest request);
   int foobar(float a, FullName b);

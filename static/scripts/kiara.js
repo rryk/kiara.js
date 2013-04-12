@@ -1445,7 +1445,7 @@
         //var protocolName = 'xmlrpc';
         //var protocolUrl = 'http://' + location.hostname + ':8080/xmlrpc/calc';
         var protocolName = 'websocket-json';
-        var protocolUrl = 'http://' + location.hostname + ':9000/ws-json/login';
+        var protocolUrl = 'ws://' + location.hostname + ':9000/ws-json/login';
         //???END PROTOCOL SPECIFIC PART
 
         var protocolCtor = getProtocol(protocolName);
