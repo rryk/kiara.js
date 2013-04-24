@@ -1678,6 +1678,37 @@
         }
     }
 
+
+    node.serveText = function(path, text, options) {
+        node.init();
+
+        if (!path)
+            throw new KIARAError(KIARA.INVALID_ARGUMENT, 'KIARA.node.serve() require path');
+
+        var options = options || {};
+        var contentType = options.contentType || 'text/plain';
+        var keys = [];
+        var sensitive = true;
+        var regexp = node.pathRegexp(path
+            , keys
+            , options.sensitive
+            , options.strict);
+
+        return function(req, res, next) {
+            var path = node.parseUrl(req).pathname;
+            var m = regexp.exec(path);
+            if (!m)
+                return next();
+
+            res.writeHeader(200, {
+                'Content-Length' : text.length,
+                'Content-Type' : contentType
+            });
+            res.write(text);
+            res.end();
+        }
+    }
+
     KIARA.node = node;
 
     return KIARA;

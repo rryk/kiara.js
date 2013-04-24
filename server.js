@@ -30,6 +30,35 @@ calcService.registerMethod('calc.addf', null, function (a, b, callback) {
 
 var app = KIARA.node.middleware();
 
+var endpointInfo = {
+    info : "test server",
+    idlURL : "/idl/calc.kiara", // absolute or relative URL
+    // idlContents : "...",    // IDL contents
+    servers : [
+        {
+            services : "*",
+            protocol : {
+                name : "jsonrpc"
+            },
+            transport : {
+                name : "http",
+                url : "/rpc/calc"
+            }
+        },
+        {
+            services : "*",
+            protocol : {
+                name : "xmlrpc"
+            },
+            transport : {
+                name : "http",
+                url : "/xmlrpc/calc"
+            }
+        }
+    ]
+};
+
+app.use(KIARA.node.serveText("/service", JSON.stringify(endpointInfo, null, 2), {contentType : "application/json"}));
 app.use(KIARA.node.serve("/rpc/calc", "jsonrpc", calcService));
 app.use(KIARA.node.serve("/xmlrpc/calc", "xmlrpc", calcService));
 app.use(KIARA.node.serveFiles(["/*.html", "/scripts/*", "/idl/*"], path.join(__dirname, 'static')));

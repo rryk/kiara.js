@@ -39,6 +39,34 @@ calcService.registerMethod('calc.addf', null, function (a, b, callback) {
     callback(null, a+b);
 });
 
+var endpointInfo = {
+    info : "test server",
+    idlURL : "/idl/calc.kiara", // absolute or relative URL
+    // idlContents : "...",    // IDL contents
+    servers : [
+        {
+            services : "*",
+            protocol : {
+                name : "jsonrpc"
+            },
+            transport : {
+                name : "http",
+                url : "/rpc/calc"
+            }
+        },
+        {
+            services : "*",
+            protocol : {
+                name : "xmlrpc"
+            },
+            transport : {
+                name : "http",
+                url : "/xmlrpc/calc"
+            }
+        }
+    ]
+};
+
 var app = express();
 
 app.configure(function() {
@@ -58,6 +86,13 @@ app.configure(function() {
     res.sendfile('static/kiara_test.html') // res.sendfile('static/index.html')
   });
 
+  // Deliver configuration informations
+  app.get('/service', function(req, res) {
+      res.format({ 'application/json' : function() {
+              res.send(endpointInfo);
+                }
+            });
+  });
 
   // For direct access to the raw data stream KIARA.node.serve must be called
   // before express.bodyParser
