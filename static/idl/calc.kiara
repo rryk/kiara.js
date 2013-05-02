@@ -5,4 +5,6 @@ namespace * calc
 service calc {
     i32 add(i32 a, i32 b)
     float addf(float a, float b)
+    i32 stringToInt32(string s)
+    string int32ToString(i32 i)
 }

@@ -25,7 +25,18 @@ calcService.registerMethod('calc.sub', null, function (a, b, callback) {
     callback(null, ((a | 0) - (b | 0)) | 0);
 });
 calcService.registerMethod('calc.addf', null, function (a, b, callback) {
+    console.log("calc.addf("+a+","+b+");");
     callback(null, a+b);
+});
+
+calcService.registerMethod('calc.stringToInt32', null, function (s, callback) {
+    console.log("calc.stringToInt32("+s+");");
+    callback(null, s|0);
+});
+
+calcService.registerMethod('calc.int32ToString', null, function (i, callback) {
+    console.log("calc.int32ToString("+i+");");
+    callback(null, i.toString());
 });
 
 var app = KIARA.node.middleware();

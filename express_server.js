@@ -38,6 +38,14 @@ calcService.registerMethod('calc.sub', null, function (a, b, callback) {
 calcService.registerMethod('calc.addf', null, function (a, b, callback) {
     callback(null, a+b);
 });
+calcService.registerMethod('calc.stringToInt32', null, function (s, callback) {
+    console.log("calc.stringToInt32("+s+");");
+    callback(null, s|0);
+});
+calcService.registerMethod('calc.int32ToString', null, function (i, callback) {
+    console.log("calc.int32ToString("+i+");");
+    callback(null, i.toString());
+});
 
 var endpointInfo = {
     info : "test server",
