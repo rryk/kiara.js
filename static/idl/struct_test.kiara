@@ -1,0 +1,14 @@
+namespace * struct_test
+
+typedef i64 Integer
+
+struct Data {
+  Integer ival,
+  string  sval 
+}
+
+service StructTest {
+  Data pack(Integer ival, string sval);
+  Integer getInteger(Data data);
+  string getString(Data data);
+}
