@@ -206,38 +206,56 @@
 
     /** Return codes signaling errors */
 
-    KIARA.NO_ERROR          = KIARA.SUCCESS;
-    KIARA.GENERIC_ERROR     = 0x0001;
-    KIARA.INPUT_ERROR       = 0x0100;
-    KIARA.OUTPUT_ERROR      = 0x0200;
-    KIARA.CONNECTION_ERROR  = 0x0300;
-    KIARA.IDL_LOAD_ERROR    = 0x0301;
-    KIARA.API_ERROR         = 0x0500;
-    KIARA.INIT_ERROR        = 0x0501;
-    KIARA.FINI_ERROR        = 0x0502;
-    KIARA.INVALID_VALUE     = 0x0503;
-    KIARA.INVALID_TYPE      = 0x0504;
-    KIARA.INVALID_OPERATION = 0x0505;
-    KIARA.INVALID_ARGUMENT  = 0x0506;
+    KIARA.NO_ERROR            = KIARA.SUCCESS;
+    KIARA.GENERIC_ERROR       = 0x0001;
+    KIARA.INPUT_ERROR         = 0x0100;
+    KIARA.OUTPUT_ERROR        = 0x0200;
+    KIARA.CONNECTION_ERROR    = 0x0300;
+    KIARA.IDL_LOAD_ERROR      = 0x0301;
+    KIARA.API_ERROR           = 0x0500;
+    KIARA.INIT_ERROR          = 0x0501;
+    KIARA.FINI_ERROR          = 0x0502;
+    KIARA.INVALID_VALUE       = 0x0503;
+    KIARA.INVALID_TYPE        = 0x0504;
+    KIARA.INVALID_OPERATION   = 0x0505;
+    KIARA.INVALID_ARGUMENT    = 0x0506;
     KIARA.UNSUPPORTED_FEATURE = 0x0507;
+    KIARA.CONFIG_ERROR        = 0x0508;
+
+    /** Network error */
+    KIARA.NETWORK_ERROR       = 0x0600;
+
+    /** Marshalling errors */
+    KIARA.REQUEST_ERROR       = 0x0700;
+
+    KIARA.RESPONSE_ERROR      = 0x0800;
+    KIARA.INVALID_RESPONSE    = 0x0801;
 
     /** Return codes from a function call */
 
-    KIARA.EXCEPTION         = 0x1000;
+    KIARA.EXCEPTION           = 0x1000;
 
     var errorMsg = {};
-    errorMsg[KIARA.NO_ERROR] = 'No error';
-    errorMsg[KIARA.GENERIC_ERROR] = 'Generic error';
-    errorMsg[KIARA.INPUT_ERROR] = 'Input error';
-    errorMsg[KIARA.OUTPUT_ERROR] = 'Output error';
-    errorMsg[KIARA.CONNECTION_ERROR] = 'Connection error';
+    errorMsg[KIARA.NO_ERROR] = 'no error';
+    errorMsg[KIARA.GENERIC_ERROR] = 'generic error';
+    errorMsg[KIARA.INPUT_ERROR] = 'input error';
+    errorMsg[KIARA.OUTPUT_ERROR] = 'output error';
+    errorMsg[KIARA.CONNECTION_ERROR] = 'connection error';
     errorMsg[KIARA.API_ERROR] = 'API error';
-    errorMsg[KIARA.INIT_ERROR] = 'Init error';
-    errorMsg[KIARA.FINI_ERROR] = 'Finalization error';
-    errorMsg[KIARA.INVALID_VALUE] = 'Invalid value';
-    errorMsg[KIARA.INVALID_TYPE] = 'Invalid type';
-    errorMsg[KIARA.INVALID_OPERATION] = 'Invalid operation';
-    errorMsg[KIARA.INVALID_ARGUMENT] = 'Invalid argument';
+    errorMsg[KIARA.INIT_ERROR] = 'initialization error';
+    errorMsg[KIARA.FINI_ERROR] = 'finalization error';
+    errorMsg[KIARA.INVALID_VALUE] = 'invalid value';
+    errorMsg[KIARA.INVALID_TYPE] = 'invalid type';
+    errorMsg[KIARA.INVALID_OPERATION] = 'invalid operation';
+    errorMsg[KIARA.INVALID_ARGUMENT] = 'invalid argument';
+    errorMsg[KIARA.UNSUPPORTED_FEATURE] = 'unsupported feature';
+    errorMsg[KIARA.CONFIG_ERROR] = 'config error';
+    errorMsg[KIARA.NETWORK_ERROR] = 'network error';
+    errorMsg[KIARA.REQUEST_ERROR] = 'request error';
+    errorMsg[KIARA.RESPONSE_ERROR] = 'response error';
+    errorMsg[KIARA.INVALID_RESPONSE] = 'invalid response';
+    errorMsg[KIARA.EXCEPTION] = 'exception response';
+
 
     // -- KIARA.Error / KIARAError --
 
