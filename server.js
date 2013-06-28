@@ -17,6 +17,9 @@ var http = require('http')
 
 // Create KIARA service
 var context = KIARA.createContext();
+
+// Calculator service
+
 var calcService = context.createService('calc', 'http://localhost:'+port+'/rpc/calc');
 calcService.registerMethod('calc.add', null, function (a, b, callback) {
     callback(null, ((a | 0) + (b | 0)) | 0);
@@ -39,7 +42,38 @@ calcService.registerMethod('calc.int32ToString', null, function (i, callback) {
     callback(null, i.toString());
 });
 
+// StructTest service
+
+var structTestService = context.createService('struct_test', 'http://localhost:'+port+'/rpc/struct_test');
+structTestService.registerMethod('StructTest.pack', null, function (ival, sval, callback) {
+    console.log('received : ('+ival+','+sval+')');
+    callback(null, {ival : (ival | 0), sval : ""+sval});
+});
+structTestService.registerMethod('StructTest.getInteger', null, function (data, callback) {
+    console.log("StructTest.getInteger("+JSON.stringify(data)+");");
+    callback(null, data.ival | 0);
+});
+structTestService.registerMethod('StructTest.getString', null, function (data, callback) {
+    console.log("StructTest.getString("+JSON.stringify(data)+");");
+    callback(null, data.sval+"");
+});
+structTestService.registerMethod('StructTest.throwException', null, function (code, message, callback) {
+    console.log("StructTest.throwException("+JSON.stringify([code, message])+");");
+    callback({code: code, message: message}, null);
+});
+
+
+// Application
+
 var app = KIARA.node.middleware();
+
+// Currently we do not support multiple IDLs in the JSON negotiation document.
+// Thus we setup two different negotiation services:
+//
+// http://localhost:PORT/service  for calc
+// http://localhost:PORT/service2 for struct_test
+
+// Setup calc service
 
 var endpointInfo = {
     info : "test server",
@@ -72,6 +106,43 @@ var endpointInfo = {
 app.use(KIARA.node.serveText("/service", JSON.stringify(endpointInfo, null, 2), {contentType : "application/json"}));
 app.use(KIARA.node.serve("/rpc/calc", "jsonrpc", calcService));
 app.use(KIARA.node.serve("/xmlrpc/calc", "xmlrpc", calcService));
+
+// Setup struct_test service
+
+var endpointInfo = {
+    info : "test server",
+    idlURL : "/idl/struct_test.kiara", // absolute or relative URL
+    // idlContents : "...",    // IDL contents
+    servers : [
+        {
+            services : "*",
+            protocol : {
+                name : "jsonrpc"
+            },
+            transport : {
+                name : "http",
+                url : "/rpc/struct_test"
+            }
+        },
+        {
+            services : "*",
+            protocol : {
+                name : "xmlrpc"
+            },
+            transport : {
+                name : "http",
+                url : "/xmlrpc/struct_test"
+            }
+        }
+    ]
+};
+
+app.use(KIARA.node.serveText("/service2", JSON.stringify(endpointInfo, null, 2), {contentType : "application/json"}));
+app.use(KIARA.node.serve("/rpc/struct_test", "jsonrpc", structTestService));
+app.use(KIARA.node.serve("/xmlrpc/struct_test", "xmlrpc", structTestService));
+
+// Setup common static resources
+
 app.use(KIARA.node.serveFiles(["/*.html", "/scripts/*", "/idl/*"], path.join(__dirname, 'static')));
 
 var server = http.createServer(app);

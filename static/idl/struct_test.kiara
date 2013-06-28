@@ -7,8 +7,14 @@ struct Data {
   string  sval 
 }
 
+exception Exception {
+  i32 code,
+  string message
+}
+
 service StructTest {
   Data pack(Integer ival, string sval);
   Integer getInteger(Data data);
   string getString(Data data);
+  void throwException(i32 code, string message) throws (Exception error);
 }
