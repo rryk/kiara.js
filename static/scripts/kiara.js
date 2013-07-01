@@ -1644,7 +1644,7 @@
             var m = regexp.exec(path);
             if (!m)
                 return next();
-            console.log("KIARA RPC Handler: for "+path);
+            //console.log("KIARA RPC Handler: for "+path);
             //res.end("KIARA RPC Handler: for "+path);
             return serveProtocol(req, res, next);
         }
